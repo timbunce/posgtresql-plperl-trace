@@ -1,28 +1,91 @@
 package PostgreSQL::PLPerl::Trace;
 
-# based on Devel::Trace
-# adds ability to show src for code outside Safe while
-# executing from code inside Safe
+=head1 NAME
 
-=pod for full tracing
+PostgreSQL::PLPerl::Trace - Simple way to trace execution of Perl statements in PL/Perl
 
-set env var:
+=head1 SYNOPSIS
 
-    PERL5DB='BEGIN { use lib qw(/Users/timbo/pg/PostgreSQL-PLPerl-Trace/lib); require PostgreSQL::PLPerl::Trace }'
+Load via a line in your F<plperlinit.pl> file:
 
-and add -d to PERL5OPT env var
+    use PostgreSQL::PLPerl::Trace;
+
+Load via 
+
+=head1 DESCRIPTION
+
+Writes a line to the PostgreSQL log file for every PL/Perl statement executed.
+This can generate truly I<massive> amounts of log data and also slows excution
+of PL/Perl code by at least a couple of orders of magnitude.
+
+Why would you want to do this? Well, there are times when it's a simple and
+effective way to see what PL/Perl code is I<actually> being executed.
+
+This module is based on L<Devel::Trace> but modified to work with PostgreSQL PL/Perl
+for both the C<plperlu> language I<and>, more significantly, for the C<plperl>
+language as well. It also shows the subroutine name whenever execution moves
+from one subroutine to another.
+
+=head1 ENABLING
+
+In order to use this module you need to arrange for it to be loaded when
+PostgreSQL initializes a Perl interpreter.
+
+Create a F<plperlinit.pl> file in the same directory as your
+F<postgres.conf> file, if it doesn't exist already.
+
+In the F<plperlinit.pl> file write the code to load this module:
+
+    use PostgreSQL::PLPerl::Trace;
+
+Just comment it out by prefixing with a C<#> when no longer needed.
+
+=head2 PostgreSQL 8.x
+
+Set the C<PERL5OPT> before starting postgres, to something like this:
+
+    PERL5OPT='-e "require q{plperlinit.pl}"'
+
+The code in the F<plperlinit.pl> should also include C<delete $ENV{PERL5OPT};>
+to avoid any problems with nested invocations of perl, e.g., via a C<plperlu>
+function.
+
+=head2 PostgreSQL 9.0
+
+For PostgreSQL 9.0 you can still use the C<PERL5OPT> method described above.
+Alternatively, and preferably, you can use the C<plperl.on_init> configuration
+variable in the F<postgres.conf> file.
+
+    plperl.on_init='require q{plperlinit.pl};'
+
+=head2 Alternative Method
+
+It you're not already using the C<PERL5OPT> environment variable to load a
+F<plperlinit.pl> file, as described above, then you can use it as a quick way
+to load the module for ad-hoc use:
+
+    $ PERL5OPT='-MPostgreSQL::PLPerl::Trace' pg_ctl ...
+
+=head1 AUTHOR
+
+Tim Bunce L<http://www.tim.bunce.name>
+
+Copyright (c) Tim Bunce, Ireland, 2010. All rights reserved.
+You may use and distribute on the same terms as Perl 5.10.1.
+
+With thanks to L<http://www.TigerLead.com> for sponsoring development.
 
 =cut
 
-
-our $VERSION = '0.10';
+# these are currently undocumented
 our $TRACE = 1;
+our $fh = \*STDERR;
 
 my $main_glob = *{"main::"};
-my $main_stash = \%{$main_glob};
+my $main_stash = \%{$main_glob}; # get ref to true main glob outside of Safe
 my $file_sub_prev;
 
-# maybe move core of this to Devel::TraceSafe
+# maybe move core of this to to a new Devel::TraceSafe module
 
 sub DB::DB { # magic sub
 
@@ -46,11 +109,11 @@ sub DB::DB { # magic sub
 
     my $file_sub = "$f/$sub";
     if ($file_sub ne $file_sub_prev) {
-        print STDERR "-- in $sub:\n" if $sub;
+        print $fh "-- in $sub:\n" if $sub;
         $file_sub_prev = $file_sub;
     }
 
-    print STDERR ">> $f:$l: $linesrc\n";
+    print $fh ">> $f:$l: $linesrc\n";
 }
 
 
