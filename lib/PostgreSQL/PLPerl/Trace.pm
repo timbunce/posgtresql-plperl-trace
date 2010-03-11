@@ -10,7 +10,9 @@ Load via a line in your F<plperlinit.pl> file:
 
     use PostgreSQL::PLPerl::Trace;
 
-Load via 
+Load via the C<PERL5OPT> environment variable:
+
+    $ PERL5OPT='-MPostgreSQL::PLPerl::Trace' pg_ctl ...
 
 =head1 DESCRIPTION
 
@@ -38,7 +40,7 @@ In the F<plperlinit.pl> file write the code to load this module:
 
     use PostgreSQL::PLPerl::Trace;
 
-Just comment it out by prefixing with a C<#> when no longer needed.
+When it's no longer needed just comment it out by prefixing with a C<#>.
 
 =head2 PostgreSQL 8.x
 
@@ -77,13 +79,13 @@ With thanks to L<http://www.TigerLead.com> for sponsoring development.
 
 =cut
 
-# these are currently undocumented
-our $TRACE = 1;
-our $fh = \*STDERR;
+# these are currently undocumented but used by tests
+our $TRACE;  $TRACE = 1     unless defined $TRACE;
+our $fh;     $fh = \*STDERR unless defined $fh;
 
 my $main_glob = *{"main::"};
 my $main_stash = \%{$main_glob}; # get ref to true main glob outside of Safe
-my $file_sub_prev;
+my $file_sub_prev = '';
 
 # maybe move core of this to to a new Devel::TraceSafe module
 
@@ -99,7 +101,7 @@ sub DB::DB { # magic sub
         $code = \@{$glob};
     }
 
-    my $sub = (caller(1))[3];
+    my $sub = (caller(1))[3] || '???';
     my $linesrc = $code->[$l];
     if (!$linesrc) { # should never happen
         my $submsg = $sub ? " for sub $sub" : "";
@@ -118,18 +120,15 @@ sub DB::DB { # magic sub
 
 
 $^P |= 0
-#   |  0x001  # Debug subroutine enter/exit.
     |  0x002  # Line-by-line debugging & save src lines.
     |  0x004  # Switch off optimizations.
-    |  0x008  # Preserve more data for future interactive inspections.
-    |  0x010  # Keep info about source lines on which a subroutine is defined.
+#   |  0x008  # Preserve more data for future interactive inspections.
+#   |  0x010  # Keep info about source lines on which a subroutine is defined.
     |  0x020  # Start with single-step on.
-#   |  0x080  # Report "goto &subroutine" as well.
     |  0x100  # Provide informative "file" names for evals
     |  0x200  # Provide informative names to anonymous subroutines
     |  0x400  # Save source code lines into "@{"_<$filename"}".
     ;
-
 
 1;
 
